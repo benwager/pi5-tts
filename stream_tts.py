@@ -1,6 +1,8 @@
 import ollama
 import subprocess
 import sys
+import tempfile
+
 
 # Configuration
 MODEL = "phi4-mini"  # Or gemma3:1b for max speed
@@ -8,30 +10,33 @@ PIPER_PATH = "/home/pi/piper/piper"  # Update path if different
 VOICE_MODEL = "/home/pi/piper/voices/en_US-lessac-medium.onnx"
 
 def speak_text(text):
-    """Send text to Piper and play audio immediately."""
     if not text.strip():
         return
     try:
-        # Run piper process
-        piper = subprocess.Popen(
-            [PIPER_PATH, "-m", VOICE_MODEL, "-f", "-"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL
-        )
-        # Play audio output directly via aplay
-        play = subprocess.Popen(
-            ["aplay", "-q", "-f", "cd", "-t", "raw", "-r", "22050", "-c", "1", "-"],
-            stdin=piper.stdout,
-            stderr=subprocess.DEVNULL
-        )
+        # Create a temporary WAV file
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            temp_path = f.name
         
+        # 1. Generate WAV file (Piper adds headers automatically with --output-file)
+        piper = subprocess.Popen(
+            ["piper", "-m", "en_US-lessac-medium.onnx", "--output-file", temp_path],
+            stdin=subprocess.PIPE,
+            stderr=subprocess.DEVNULL
+        )
         piper.stdin.write(text.encode())
         piper.stdin.close()
         piper.wait()
-        play.wait()
+        
+        # 2. Play WAV file using paplay (PipeWire compatible, handles Bluetooth)
+        # paplay automatically detects format from WAV header
+        subprocess.run(["paplay", temp_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # 3. Clean up
+        os.remove(temp_path)
+        
     except Exception as e:
         print(f"TTS Error: {e}", file=sys.stderr)
+
 
 def stream_chat(prompt):
     print(f"🤖 AI: ", end="", flush=True)
