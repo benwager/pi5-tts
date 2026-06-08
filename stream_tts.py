@@ -10,15 +10,35 @@ MODEL = "phi4-mini"  # Or gemma3:1b for max speed
 PIPER_PATH = "/home/pi/piper/piper"  # Update path if different
 VOICE_MODEL = "/home/pi/piper/voices/en_US-lessac-medium.onnx"
 
+def get_bluetooth_sink():
+    """Finds the currently active Bluetooth sink."""
+    try:
+        # List sinks and look for one that is RUNNING (like YouTube is using)
+        result = subprocess.run(["pactl", "list", "short", "sinks"], capture_output=True, text=True)
+        for line in result.stdout.splitlines():
+            if "bluez" in line and "RUNNING" in line:
+                # Format: Index Name ... -> We need the Name (2nd column)
+                return line.split()[1]
+        # Fallback: Just find any bluez sink
+        for line in result.stdout.splitlines():
+            if "bluez" in line:
+                return line.split()[1]
+    except Exception:
+        pass
+    return None
+
 def speak_text(text):
     if not text.strip():
         return
+    
+    sink = get_bluetooth_sink()
+    if not sink:
+        print("No Bluetooth sink found, using default.")
+    
     try:
-        # Create a temporary WAV file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             temp_path = f.name
         
-        # 1. Generate WAV file (Piper adds headers automatically with --output-file)
         piper = subprocess.Popen(
             ["piper", "-m", "en_US-lessac-medium.onnx", "--output-file", temp_path],
             stdin=subprocess.PIPE,
@@ -28,16 +48,16 @@ def speak_text(text):
         piper.stdin.close()
         piper.wait()
         
-        # 2. Play WAV file using paplay (PipeWire compatible, handles Bluetooth)
-        # paplay automatically detects format from WAV header
-        subprocess.run(["paplay", temp_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # 3. Clean up
+        cmd = ["paplay", temp_path]
+        if sink:
+            cmd.insert(1, "-d") # Insert -d flag
+            cmd.insert(2, sink) # Insert sink name
+            
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         os.remove(temp_path)
         
     except Exception as e:
         print(f"TTS Error: {e}", file=sys.stderr)
-
 
 def stream_chat(prompt):
     print(f"🤖 AI: ", end="", flush=True)
