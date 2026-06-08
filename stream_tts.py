@@ -1,6 +1,7 @@
 import ollama
 import subprocess
 import sys
+import os
 import tempfile
 
 
