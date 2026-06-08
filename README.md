@@ -16,7 +16,7 @@
 
 
 # extract
-`tar -xzf piper_linux_aarch64.tar.gz`
+`tar -xzf piper_arm64.tar.gz`
 
 # Download a fast, high-quality voice (Lessac Medium)
 `mkdir -p voices`
